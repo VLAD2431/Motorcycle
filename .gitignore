@@ -1,1 +1,9 @@
-target/ 
+target/
+*.jar
+*.db
+*.db-wal
+*.db-shm
+.idea/
+*.iml
+.vscode/
+.env

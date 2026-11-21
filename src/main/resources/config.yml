@@ -1,13 +1,63 @@
 motorcycle:
   item:
-    material: PAPER
-    model: "motorcycle:moto"
-    name: "<white>Мотоцикл"
+    # Базовый предмет. Модель из текстур-пака выбирается по custom_model_data.
+    material: BARRIER
+    # Прямая ссылка на файл модели (компонент minecraft:item_model).
+    # Оставьте пустым, если модель выбирается через custom_model_data: при
+    # заданном item_model клиент берёт модель напрямую и перебор не идёт.
+    model: ""
+    # Компонент minecraft:custom_model_data — с 1.21.4 модели выбираются по нему
+    # (assets/minecraft/items/barrier.json, select/range_dispatch/condition по
+    # свойству minecraft:custom_model_data). Строка из strings — это имя из блока
+    # "when" в паке: {when: "base_bike"} ждёт strings[0] = "base_bike".
+    # Остальные списки на случай, если пак выбирает модель иначе: floats — для
+    # range_dispatch (порог), flags — для condition, colors — для tints.
+    # Пустые списки не задаются вообще.
+    custom-model-data:
+      strings: ["base_bike"]
+      # floats: [1.0]
+      # flags: [true]
+      # colors: [16711680]
+    # Компонент minecraft:custom_data — запасной вариант для паков, где модель
+    # выбирается предикатом minecraft:custom_data. По умолчанию пусто.
+    # Ключ пишется в NBT «как есть», без префикса пространства имён.
+    custom-data: {}
+    name: "<i:false><aqua>Гравибайк"
     lore:
-      - "<gray>Заряд: <white>{charge}%"
-      - "<gray>Правый клик — установить"
-      - "<gray>Сохраняет заряд при хранении"
+      - "<i:false><gray>Заряд <dark_gray>| <aqua>{charge}%"
+      - "<i:false><aqua>ПКМ <dark_gray>| <gray>Установить"
+      - "<i:false><aqua>F <dark_gray>| <gray>Забрать"
     max-stack-size: 1
+
+  water:
+    # Разрешает мотоциклу использовать поверхность воды как опору. Лава не поддерживается.
+    enabled: true
+
+  particles:
+    # Типы частиц Paper: без дополнительных данных либо с данными блока (например BLOCK).
+    # Для BLOCK используется материал поверхности; неподдерживаемые типы игнорируются.
+    # Скорость указана в км/ч, interval-ticks — в тиках (20 тиков = 1 секунда).
+    sand:
+      enabled: true
+      particle: BLOCK
+      count: 4
+      interval-ticks: 2
+      min-speed-kmh: 5.0
+      spread: 0.15
+    red-sand:
+      enabled: true
+      particle: BLOCK
+      count: 4
+      interval-ticks: 2
+      min-speed-kmh: 5.0
+      spread: 0.15
+    water:
+      enabled: true
+      particle: SPLASH
+      count: 4
+      interval-ticks: 2
+      min-speed-kmh: 5.0
+      spread: 0.15
 
   physics:
     # Максимальная скорость вперёд в км/ч.
@@ -19,11 +69,13 @@ motorcycle:
     # Скорость движения назад в км/ч.
     reverse-speed-kmh: 12.0
     # Скорость поворота на максимальной скорости, градусов в секунду.
-    steering-degrees-per-second: 95.0
+    steering-degrees-per-second: 40.0
     # Пассивное сопротивление движению в км/ч в секунду.
     rolling-resistance-kmh-per-second: 7.0
     # Минимальная скорость, ниже которой поворот почти не работает.
     steering-min-kmh: 4.0
+    jump-height: 2.5
+    jump-gravity: 0.08
 
     # Высота мотоцикла над поверхностью при установке.
     hover-height: 0.70
@@ -35,6 +87,34 @@ motorcycle:
     # Блоки, попадающие в габарит мотоцикла, вообще нельзя устанавливать.
     hover-rise-per-tick: 0.22
     hover-drop-per-tick: 0.28
+    # Высота ступеньки, на которую мотоцикл может заехать без прыжка.
+    step-up-max-height: 1.0
+    # Насколько быстро подниматься/спускаться со ступеньки за один тик.
+    step-up-per-tick: 1.05
+    # Минимальное расстояние, на котором ищется ступенька впереди.
+    # Фактический зонд никогда не короче пути, который байк проезжает за тик,
+    # иначе на высокой скорости перепад попадал в «слепую» зону между зондом и
+    # габаритом: ступенька выглядела как ровная земля, а потом байк упирался в неё.
+    step-probe-distance: 0.90
+    # Насколько глубоко под байком искать пол. Поиск идёт строго вниз от
+    # позиции байка, поэтому потолки, мосты и навесы над дорогой игнорируются,
+    # а пол под ними находится правильно. Значение ограничивает и стоимость
+    # поиска: если ближе этого расстояния твёрдого блока нет (пропасть,
+    # незагруженный чанк), байк просто сохраняет текущую высоту.
+    ground-search-depth: 12
+    # Какая доля скорости остаётся, когда байк упёрся в препятствие.
+    # Ноль означал полную остановку без выхода: игрок держал W, и каждый тик
+    # повторялась та же ветка. Теперь байк упирается, теряет скорость и
+    # продолжает переоценивать обстановку.
+    blocked-speed-retention: 0.25
+    # Через сколько тиков подряд заблокированного движения разрешить байку
+    # выбраться вверх, если проверка габарита противоречит проверке ступеньки
+    # (лестницы, плиты, неполные блоки). На настоящие стены это не действует.
+    stuck-escape-ticks: 6
+    # Насколько быстро байк тонет, когда под ним вообще нет пола
+    # (пропасть глубже ground-search-depth). Не ноль — иначе байк навсегда
+    # улетал бы по ровной линии, не приближаясь к земле.
+    no-ground-fall-per-tick: 0.5
     # Максимальный визуальный угол наклона в поворотах.
     max-bank-degrees: 28.0
     # Визуальный наклон при разгоне/торможении.
@@ -45,6 +125,8 @@ motorcycle:
 
   # Габариты невидимого сиденья и зоны запрета установки блоков вокруг мотоцикла.
   # Эти значения также используются для точной проверки пересечения блока с мотоциклом.
+  # Ширина (width + extra-radius) — это ещё и «след» байка: по нему определяется,
+  # на какой высоте байк стоит, поэтому сужение width меняет и поведение на уступах.
   collision:
     width: 1.20
     height: 1.20
@@ -54,45 +136,92 @@ motorcycle:
   visual:
     # Вертикальное смещение модели относительно сиденья.
     height-offset: 0.0
+    # Смещение модели вперёд по курсу.
+    forward-offset: 0.55
+    # Смещение невидимого сиденья относительно визуальной базы.
+    seat-offset-y: -0.55
+    # Дополнительный поворот модели в градусах.
+    # Модель мотоцикла приходит из ресурспака клиента, поэтому плагин не знает,
+    # в какой оси её нарисовали. Если модель развёрнута относительно блоков
+    # (например, на 45 градусов), выставьте здесь -45 или 45.
+    # Знак: yaw в Minecraft растёт по часовой стрелке сверху.
+    # Применяется после поворота по курсу, поэтому не зависит от направления байка.
+    model-yaw-offset-degrees: 0.0
+    # Наклон модели вперёд/назад в градусах (положительное значение — носом вверх).
+    model-pitch-offset-degrees: 0.0
+    # Крен модели вбок в градусах (положительное значение — правый бок вниз).
+    model-roll-offset-degrees: 0.0
     # Масштаб отображения модели предмета.
     scale: 1.0
+    # Интерполяция телепорта модели в тиках. 3 ≈ как у игрока-пассажира.
+    teleport-duration-ticks: 3
+
+  sounds:
+    # Звук слышен поблизости; без водителя воспроизводится холостой ход.
+    # Для собственных звуков укажите ID событий из sounds.json ресурспака клиента.
+    # Пример для assets/quack_sound и инструкция по настройке — в README, раздел «Звуки из ресурс-пака».
+    enabled: true
+    idle:
+      sound: "quack_sound:s0"
+      volume: 1.0
+      pitch: 1.0
+      interval-ticks: 1
+    low:
+      # Верхняя граница диапазона в км/ч (не включительно).
+      max-speed: 30.0
+      sound: "quack_sound:s1"
+      volume: 1.0
+      pitch: 1.0
+      interval-ticks: 1
+    medium:
+      max-speed: 60.0
+      sound: "quack_sound:s2"
+      volume: 1.0
+      pitch: 1.0
+      interval-ticks: 1
+    high:
+      sound: "quack_sound:s3"
+      volume: 1.0
+      pitch: 1.0
+      interval-ticks: 1
 
   battery:
     capacity: 100
-    consumption-at-max-speed-percent-per-minute: 0.65
-    charge-per-second: 3.0
+    consumption-at-max-speed-percent-per-minute: 6.5
+    charge-per-second: 1.0
 
   storage:
-    # Уборка/установка мотоцикла выполняется через ПКМ.
-    # Во время езды используйте ПКМ пустой рукой, чтобы начать уборку.
-    duration-seconds: 30
+    # Установка — ПКМ с предметом; уборка рядом с мотоциклом — клавиша смены рук (F).
+    nearby-radius: 3.0
+    duration-seconds: 15
     cancel-on-damage: true
-    cancel-on-dismount: true
 
   actionbar:
-    driving: "<white>Заряд: <green>{charge}% <dark_gray>│ <white>Скорость: <yellow>{speed} км/ч"
-    storage: "<white>Уборка мотоцикла: <yellow>{seconds} сек."
-    installing: "<white>Установка мотоцикла: <yellow>{seconds} сек."
-    charging: "<white>Зарядка: <green>{charge}% <dark_gray>│ <gray>Зона зарядки"
+    update-interval-ticks: 20
+    driving: "<i:false><gray>Заряд: <aqua>{charge}% <dark_gray>│ <gray>Скорость: <aqua>{speed} км/ч"
+    storage: "<i:false><gray>Уборка гравибайка: <aqua>{seconds} сек."
+    installing: "<i:false><gray>Установка гравибайка: <aqua>{seconds} сек."
 
 messages:
   prefix: "<dark_gray>[<white>Мото<dark_gray>] <reset>"
   no-permission: "<red>Недостаточно прав."
   only-player: "<red>Команду может выполнить только игрок."
-  motorcycle-given: "<green>Мотоцикл выдан. Заряд: <white>{charge}%"
-  motorcycle-not-found: "<red>Мотоцикл не найден."
-  no-ride: "<red>В этой зоне запрещено ездить на мотоцикле."
-  no-ride-deploy: "<red>Здесь нельзя установить мотоцикл."
-  already-riding: "<red>Вы уже управляете мотоциклом."
-  not-motorcycle-item: "<red>В руке нет мотоцикла."
+  motorcycle-given: "<green>Гравибайк выдан. Заряд: <white>{charge}%"
+  motorcycle-not-found: "<red>Гравибайк не найден."
+  no-ride: "<red>В этой зоне запрещено ездить на гравибайке."
+  no-ride-deploy: "<red>Здесь нельзя установить гравибайк."
+  install-obstructed: "<red>Для гравибайка недостаточно свободного места."
+  storage-busy: "<red>Этот гравибайк сейчас убирают."
+  invalid-zone: "<red>Укажите точки в одном мире и имя зоны из букв, цифр, _ или - (до 32 символов)."
+  already-riding: "<red>Вы уже управляете гравибайком."
+  mount-failed: "<red>Не удалось сесть на гравибайк."
+  not-motorcycle-item: "<red>В руке нет гравибайка."
   install-start: "<yellow>Установка началась. Не двигайтесь."
   install-cancel: "<red>Установка отменена."
-  storage-start: "<yellow>Уборка началась. Не слезайте с мотоцикла."
+  storage-start: "<yellow>Уборка началась. Не двигайтесь и не садитесь на гравибайк."
   storage-cancel: "<red>Уборка отменена."
-  storage-complete: "<green>Мотоцикл убран в инвентарь."
-  install-complete: "<green>Мотоцикл установлен."
-  battery-empty: "<red>Аккумулятор разряжен. Найдите зону зарядки."
-  charge-start: "<green>Мотоцикл заряжается."
+  storage-complete: "<green>Гравибайк убран в инвентарь."
+  install-complete: "<green>Гравибайк установлен."
   zone-created: "<green>Зона <white>{name} <green>создана: <white>{type}"
   zone-deleted: "<green>Зона <white>{name} <green>удалена."
   zone-not-found: "<red>Такой зоны нет."
@@ -100,4 +229,4 @@ messages:
   pos2-set: "<green>Точка 2 установлена: <white>{x} {y} {z}"
   missing-pos: "<red>Сначала поставьте pos1 и pos2."
   zones-list: "<gray>Зоны: <white>{zones}"
-  usage: "<yellow>/moto give <игрок> [количество]\n<yellow>/moto pos1\n<yellow>/moto pos2\n<yellow>/moto zone create <no_ride|charge> <имя>\n<yellow>/moto zone delete <имя>\n<yellow>/moto zone list"
+  usage: "<yellow>/moto give <игрок> [количество]<newline><yellow>/moto pos1<newline><yellow>/moto pos2<newline><yellow>/moto zone create <no_ride|charge> <имя><newline><yellow>/moto zone delete <имя><newline><yellow>/moto zone list"

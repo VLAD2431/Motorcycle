@@ -70,16 +70,18 @@ public final class MotorcycleCommand implements CommandExecutor, TabCompleter {
         }
 
         for (int i = 0; i < amount; i++) {
-            ItemStack item = plugin.motorcycles().createItem(100);
+            int capacity = plugin.motorcycles().capacity();
+            ItemStack item = plugin.motorcycles().createItem(capacity);
             var result = target.getInventory().addItem(item);
             for (ItemStack leftover : result.values()) {
                 target.getWorld().dropItemNaturally(target.getLocation(), leftover);
             }
         }
 
-        send(sender, plugin.message("messages.motorcycle-given").replace("{charge}", "100"));
+        int capacity = plugin.motorcycles().capacity();
+        send(sender, plugin.message("messages.motorcycle-given").replace("{charge}", Integer.toString(capacity)));
         if (!target.equals(sender)) {
-            send(target, plugin.message("messages.motorcycle-given").replace("{charge}", "100"));
+            send(target, plugin.message("messages.motorcycle-given").replace("{charge}", Integer.toString(capacity)));
         }
     }
 
@@ -126,6 +128,10 @@ public final class MotorcycleCommand implements CommandExecutor, TabCompleter {
     }
 
     private void createZone(CommandSender sender, String[] args) {
+        if (!plugin.zones().isReady()) {
+            send(sender, "<red>Зоны ещё загружаются.");
+            return;
+        }
         if (!(sender instanceof Player player)) {
             send(sender, plugin.message("messages.only-player"));
             return;
@@ -153,7 +159,7 @@ public final class MotorcycleCommand implements CommandExecutor, TabCompleter {
         try {
             zone = plugin.zones().create(name, type, pos1, pos2);
         } catch (IllegalArgumentException ex) {
-            send(sender, "<red>Обе точки должны быть в одном мире.");
+            send(sender, plugin.message("messages.invalid-zone"));
             return;
         }
 
@@ -163,6 +169,10 @@ public final class MotorcycleCommand implements CommandExecutor, TabCompleter {
     }
 
     private void deleteZone(CommandSender sender, String[] args) {
+        if (!plugin.zones().isReady()) {
+            send(sender, "<red>Зоны ещё загружаются.");
+            return;
+        }
         if (args.length < 3) {
             send(sender, "/moto zone delete <имя>");
             return;
@@ -190,10 +200,17 @@ public final class MotorcycleCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.reloadConfig();
+        plugin.motorcycles().onConfigReloaded();
         send(sender, "<green>Конфигурация мотоцикла перезагружена.");
     }
 
     private void send(CommandSender sender, String miniMessage) {
+        if (sender instanceof Player player && !player.hasPermission("motorcycle.admin"))
+            return;
+        sendAlways(sender, miniMessage);
+    }
+
+    private void sendAlways(CommandSender sender, String miniMessage) {
         Component component = plugin.miniMessage().deserialize(miniMessage == null ? "" : miniMessage);
         sender.sendMessage(component);
     }
@@ -201,18 +218,30 @@ public final class MotorcycleCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return partial(args[0], List.of("give", "pos1", "pos2", "zone", "reload"));
+            List<String> commands = new ArrayList<>();
+            if (sender.hasPermission("motorcycle.give")) commands.add("give");
+            if (sender.hasPermission("motorcycle.admin")) {
+                commands.add("pos1");
+                commands.add("pos2");
+                commands.add("zone");
+                commands.add("reload");
+            }
+            return partial(args[0], commands);
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("zone")) {
+        if (!sender.hasPermission("motorcycle.admin") && !sender.hasPermission("motorcycle.give"))
+            return new ArrayList<>();
+        if (args.length == 2 && args[0].equalsIgnoreCase("zone") && sender.hasPermission("motorcycle.admin")) {
             return partial(args[1], List.of("create", "delete", "list"));
         }
-        if (args.length == 3 && args[0].equalsIgnoreCase("zone") && args[1].equalsIgnoreCase("create")) {
+        if (args.length == 3 && args[0].equalsIgnoreCase("zone") && args[1].equalsIgnoreCase("create")
+                && sender.hasPermission("motorcycle.admin")) {
             return partial(args[2], List.of("no_ride", "charge"));
         }
-        if (args.length == 3 && args[0].equalsIgnoreCase("zone") && args[1].equalsIgnoreCase("delete")) {
+        if (args.length == 3 && args[0].equalsIgnoreCase("zone") && args[1].equalsIgnoreCase("delete")
+                && sender.hasPermission("motorcycle.admin")) {
             return partial(args[2], plugin.zones().getAll().stream().map(Zone::name).toList());
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
+        if (args.length == 2 && args[0].equalsIgnoreCase("give") && sender.hasPermission("motorcycle.give")) {
             return partial(args[1], Bukkit.getOnlinePlayers().stream().map(Player::getName).toList());
         }
         return new ArrayList<>();

@@ -7,11 +7,11 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
-import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
@@ -31,19 +31,15 @@ public final class MotorcycleListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInteractEntity(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) return;
         Motorcycle bike = plugin.motorcycles().getByEntity(event.getRightClicked());
         if (bike == null) return;
         event.setCancelled(true);
         plugin.motorcycles().mount(event.getPlayer(), bike);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onInteractAtEntity(PlayerInteractAtEntityEvent event) {
-        Motorcycle bike = plugin.motorcycles().getByEntity(event.getRightClicked());
-        if (bike == null) return;
-        event.setCancelled(true);
-        plugin.motorcycles().mount(event.getPlayer(), bike);
-    }
+    // PlayerInteractAtEntityEvent is a subclass of PlayerInteractEntityEvent;
+    // one handler prevents the interaction from being processed twice.
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInteract(PlayerInteractEvent event) {
@@ -66,24 +62,25 @@ public final class MotorcycleListener implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDismount(EntityDismountEvent event) {
         plugin.motorcycles().onDismount(event);
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        plugin.motorcycles().removeRider(event.getPlayer());
+        plugin.motorcycles().onPlayerQuit(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onChunkUnload(ChunkUnloadEvent event) {
+        plugin.motorcycles().unloadEntities(event.getChunk().getEntities());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        for (Motorcycle bike : plugin.motorcycles().getAll()) {
-            if (!bike.seat().getWorld().equals(event.getBlock().getWorld())) continue;
-            if (plugin.motorcycles().intersectsPlacedBlock(bike, event.getBlock())) {
-                event.setCancelled(true);
-                return;
-            }
+        if (plugin.motorcycles().intersectsPlacedBlock(event.getBlock())) {
+            event.setCancelled(true);
         }
     }
 
@@ -96,8 +93,19 @@ public final class MotorcycleListener implements Listener {
         }
 
         if (event.getEntity() instanceof org.bukkit.entity.Player player) {
-            Motorcycle riding = plugin.motorcycles().getByPlayer(player);
-            if (riding != null && riding.storageInProgress()
+            if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+                Motorcycle riddenBike = plugin.motorcycles().getByPlayer(player);
+                var vehicle = player.getVehicle();
+                if (riddenBike != null && vehicle != null
+                        && (vehicle == riddenBike.seat() || vehicle == riddenBike.passengerSeat())) {
+                    player.setFallDistance(0);
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+            // Storage runs while standing next to the bike, so the pending task
+            // must be consulted instead of the rider mapping.
+            if (plugin.motorcycles().isStoragePending(player)
                     && plugin.getConfig().getBoolean("motorcycle.storage.cancel-on-damage", true)) {
                 plugin.motorcycles().cancelStorageForPlayer(player, "messages.storage-cancel");
             }
