@@ -14,6 +14,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Input;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.World;
 import org.bukkit.Color;
 import org.bukkit.attribute.Attribute;
@@ -66,6 +68,7 @@ public final class MotorcycleManager {
 
     private final Map<UUID, Pig> loadedSeats = registry.seats();
     private final Map<UUID, ItemDisplay> loadedVisuals = registry.visuals();
+    private final Map<UUID, ItemDisplay> loadedLightVisuals = registry.lightVisuals();
 
     private int tickTask = -1;
     private long ticksElapsed;
@@ -120,6 +123,14 @@ public final class MotorcycleManager {
                 && visual.getPersistentDataContainer().has(plugin.visualKey(), PersistentDataType.BYTE)) {
             loadedVisuals.put(id, visual);
             tryRegisterLoaded(id);
+            return;
+        }
+
+        if (entity instanceof ItemDisplay visual
+                && visual.getPersistentDataContainer().has(plugin.lightVisualKey(), PersistentDataType.BYTE)) {
+            loadedLightVisuals.put(id, visual);
+            Motorcycle bike = motorcycles.get(id);
+            if (bike != null) bike.setLightVisual(visual);
         }
     }
 
@@ -139,6 +150,8 @@ public final class MotorcycleManager {
 
         Motorcycle bike = new Motorcycle(id, seat, visual,
                 Math.min(capacity, Math.max(0, battery)), heading);
+        ItemDisplay lightVisual = loadedLightVisuals.get(id);
+        if (lightVisual != null && lightVisual.isValid()) bike.setLightVisual(lightVisual);
         bike.setGravibikeDecal(
                 GravibikeDecalState.read(visual.getPersistentDataContainer(), plugin.gravibikeSkinIdKey()),
                 GravibikeDecalState.read(visual.getPersistentDataContainer(), plugin.gravibikeItemModelKey()),
@@ -157,6 +170,30 @@ public final class MotorcycleManager {
                 registerLoadedEntity(entity);
             }
         }
+    }
+
+    static CustomModelData lightCustomModelData(String value) {
+        return CustomModelData.customModelData().addString(value).build();
+    }
+
+    static int clampLightBrightness(int value) {
+        return Math.max(0, Math.min(15, value));
+    }
+
+    private ItemStack applyLightCustomModelData(ItemStack item, ConfigurationSection section) {
+        if (section == null) return item;
+        List<Float> floats = section.getFloatList("floats");
+        List<Boolean> flags = section.getBooleanList("flags");
+        List<String> strings = section.getStringList("strings");
+        List<Color> colors = configColors(section);
+        if (floats.isEmpty() && flags.isEmpty() && strings.isEmpty() && colors.isEmpty()) return item;
+        var builder = CustomModelData.customModelData();
+        floats.forEach(builder::addFloat);
+        flags.forEach(builder::addFlag);
+        strings.stream().filter(value -> !value.isBlank()).forEach(builder::addString);
+        colors.forEach(builder::addColor);
+        item.setData(DataComponentTypes.CUSTOM_MODEL_DATA, builder);
+        return item;
     }
 
     public void shutdown() {
@@ -656,6 +693,43 @@ public final class MotorcycleManager {
 
         Motorcycle bike = new Motorcycle(id, pig, visual, clampedBattery, initialYaw);
         bike.setGravibikeDecal(skinId, itemModel, customModelData);
+        try {
+            String lightModel = plugin.getConfig().getString("motorcycle.visual.light-model", "");
+            var lightModelKey = lightModel == null || lightModel.isBlank() ? null
+                    : org.bukkit.NamespacedKey.fromString(lightModel);
+            ConfigurationSection lightModelData = plugin.getConfig()
+                    .getConfigurationSection("motorcycle.visual.light-custom-model-data");
+            if (lightModelKey != null || lightModelData != null) {
+                ItemDisplay lightVisual = base.getWorld().spawn(base, ItemDisplay.class, display -> {
+                    ItemStack lightItem = new ItemStack(Material.BARRIER);
+                    ItemMeta lightMeta = lightItem.getItemMeta();
+                    if (lightModelKey != null) lightMeta.setItemModel(lightModelKey);
+                    lightItem.setItemMeta(lightMeta);
+                    lightItem = applyLightCustomModelData(lightItem, lightModelData);
+                    display.setItemStack(lightItem);
+                    display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+                    display.setInvulnerable(true);
+                    display.setGravity(false);
+                    display.setPersistent(true);
+                    display.setTeleportDuration(3);
+                    display.setInterpolationDuration(3);
+                    int blockBrightness = clampLightBrightness(plugin.getConfig()
+                            .getInt("motorcycle.visual.light-brightness.block", 15));
+                    int skyBrightness = clampLightBrightness(plugin.getConfig()
+                            .getInt("motorcycle.visual.light-brightness.sky", 15));
+                    display.setBrightness(new org.bukkit.entity.Display.Brightness(blockBrightness, skyBrightness));
+                    display.getPersistentDataContainer().set(plugin.lightVisualKey(), PersistentDataType.BYTE, (byte) 1);
+                    display.getPersistentDataContainer().set(plugin.bikeIdKey(), PersistentDataType.STRING, id.toString());
+                });
+                if (!lightVisual.isValid()) throw new SpawnRejectedException("Light model spawn was cancelled");
+                bike.setLightVisual(lightVisual);
+                loadedLightVisuals.put(id, lightVisual);
+            }
+        } catch (RuntimeException ex) {
+            visual.remove();
+            pig.remove();
+            throw ex;
+        }
         motorcycles.put(id, bike);
         loadedSeats.put(id, pig);
         loadedVisuals.put(id, visual);
@@ -854,6 +928,7 @@ public final class MotorcycleManager {
         Location start = player.getLocation().clone();
         bike.setStorageInProgress(true);
         storageBikes.put(player.getUniqueId(), bike);
+        applyOperationSlowness(player);
         send(player, "messages.storage-start");
 
         int task = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, new Runnable() {
@@ -875,6 +950,7 @@ public final class MotorcycleManager {
                     completeStorage(player, bike);
                     return;
                 }
+                applyOperationSlowness(player);
                 sendActionBar(player, parseActionbar("motorcycle.actionbar.storage", bike, left));
                 left--;
             }
@@ -886,6 +962,7 @@ public final class MotorcycleManager {
         cancelTask(pendingStorageTasks.remove(player.getUniqueId()));
         storageBikes.remove(player.getUniqueId());
         bike.setStorageInProgress(false);
+        clearOperationSlowness(player);
 
         ItemStack item = createItem(bike.battery(), bike.gravibikeSkinId(), bike.gravibikeItemModel(),
                 bike.gravibikeCustomModelData());
@@ -929,6 +1006,7 @@ public final class MotorcycleManager {
         Location start = player.getLocation().clone();
         int duration = Math.max(1, plugin.getConfig().getInt("motorcycle.storage.duration-seconds", 30));
         send(player, "messages.install-start");
+        applyOperationSlowness(player);
 
         int task = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, new Runnable() {
             int left = duration;
@@ -955,6 +1033,7 @@ public final class MotorcycleManager {
                     completeInstall(player, battery);
                     return;
                 }
+                applyOperationSlowness(player);
                 sendActionBar(player, parseActionbar("motorcycle.actionbar.installing", null, left));
                 left--;
             }
@@ -964,6 +1043,7 @@ public final class MotorcycleManager {
 
     private void completeInstall(org.bukkit.entity.Player player, int battery) {
         cancelTask(pendingInstallTasks.remove(player.getUniqueId()));
+        clearOperationSlowness(player);
         ItemStack current = player.getInventory().getItemInMainHand();
         if (!isMotorcycleItem(current))
             return;
@@ -1001,6 +1081,7 @@ public final class MotorcycleManager {
 
     private void cancelInstall(org.bukkit.entity.Player player, String messagePath) {
         cancelTask(pendingInstallTasks.remove(player.getUniqueId()));
+        clearOperationSlowness(player);
         sendActionBar(player, Component.empty());
         send(player, messagePath);
     }
@@ -1017,10 +1098,19 @@ public final class MotorcycleManager {
 
     private void cancelStorage(org.bukkit.entity.Player player, Motorcycle bike, String path) {
         bike.setStorageInProgress(false);
+        clearOperationSlowness(player);
         cancelTask(pendingStorageTasks.remove(player.getUniqueId()));
         storageBikes.remove(player.getUniqueId());
         sendActionBar(player, Component.empty());
         send(player, path);
+    }
+
+    private void applyOperationSlowness(org.bukkit.entity.Player player) {
+        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 1, true, false, false));
+    }
+
+    private void clearOperationSlowness(org.bukkit.entity.Player player) {
+        player.removePotionEffect(PotionEffectType.SLOWNESS);
     }
 
     private void cancelTask(Integer task) {
@@ -1195,19 +1285,15 @@ public final class MotorcycleManager {
     // ==================== Управление ====================
 
     private void updateHeading(Motorcycle bike, boolean left, boolean right) {
-        double absKmh = Math.abs(blocksPerTickToKmh(bike.speed()));
-        double maxSteerPerTick = plugin.getConfig().getDouble("motorcycle.physics.steering-degrees-per-second", 95.0)
-                / 20.0;
-        double minKmh = plugin.getConfig().getDouble("motorcycle.physics.steering-min-kmh", 4.0);
-        double factor = Math.max(0.0, Math.min(1.0, absKmh / Math.max(0.1, minKmh + 8.0)));
+        double maxSteerPerTick = physics.steeringDegreesPerTick(bike.speed());
         if (left == right)
             return;
 
         float previous = bike.headingYaw();
         if (left)
-            bike.setHeadingYaw(previous - (float) (maxSteerPerTick * factor));
+            bike.setHeadingYaw(previous - (float) maxSteerPerTick);
         if (right)
-            bike.setHeadingYaw(previous + (float) (maxSteerPerTick * factor));
+            bike.setHeadingYaw(previous + (float) maxSteerPerTick);
         bike.seat().setRotation(bike.headingYaw(), 0);
         // Persist only after a meaningful turn, so the chunk is not dirtied every tick.
         if (Float.isNaN(bike.persistedHeading()) || Math.abs(bike.headingYaw() - bike.persistedHeading()) > 5.0f) {
@@ -1596,6 +1682,7 @@ public final class MotorcycleManager {
     }
 
     private boolean syncVisual(Motorcycle bike) {
+        ItemDisplay lightVisual = bike.lightVisual();
         if (bike.visual().getVehicle() != null) {
             bike.visual().leaveVehicle();
         }
@@ -1621,7 +1708,8 @@ public final class MotorcycleManager {
         boolean positionChanged = previous == null || !previous.samePosition(next);
         boolean transformChanged = previous == null || !previous.sameTransformation(next);
         boolean durationChanged = previous == null || previous.duration() != teleportTicks;
-        if (!positionChanged && !transformChanged && !durationChanged)
+        if (!positionChanged && !transformChanged && !durationChanged
+                && (lightVisual == null || !lightVisual.isValid()))
             return true;
         if (durationChanged)
             bike.visual().setTeleportDuration(teleportTicks);
@@ -1637,6 +1725,10 @@ public final class MotorcycleManager {
                         + visualLoc + ", actual=" + bike.visual().getLocation() + ", valid=" + bike.visual().isValid()
                         + ", vehicle=" + bike.visual().getVehicle());
             }
+        }
+        if (lightVisual != null && lightVisual.isValid()) {
+            lightVisual.setTeleportDuration(teleportTicks);
+            lightVisual.teleport(visualLoc);
         }
         if (!transformChanged && !durationChanged)
             return teleported;
@@ -1657,6 +1749,14 @@ public final class MotorcycleManager {
                 new Quaternionf()));
         bike.visual().setInterpolationDelay(0);
         bike.visual().setInterpolationDuration(previous == null ? 0 : teleportTicks);
+        if (lightVisual != null && lightVisual.isValid()) {
+            lightVisual.setRotation(bike.visual().getYaw(), bike.visual().getPitch());
+            lightVisual.setTransformation(bike.visual().getTransformation());
+            lightVisual.setInterpolationDelay(0);
+            lightVisual.setInterpolationDuration(previous == null ? 0 : teleportTicks);
+        } else {
+            return teleported;
+        }
         return teleported;
     }
 
@@ -1829,6 +1929,8 @@ public final class MotorcycleManager {
             bike.seat().remove();
         if (bike.visual().isValid())
             bike.visual().remove();
+        if (bike.lightVisual() != null && bike.lightVisual().isValid())
+            bike.lightVisual().remove();
     }
 
     private boolean actionbarTick() {
@@ -1847,7 +1949,14 @@ public final class MotorcycleManager {
             String raw = entity.getPersistentDataContainer().get(plugin.bikeIdKey(), PersistentDataType.STRING);
             if (raw != null) {
                 try {
-                    registry.unload(UUID.fromString(raw), entity);
+                    UUID id = UUID.fromString(raw);
+                    boolean wasBikePart = bike != null || entity.getPersistentDataContainer()
+                            .has(plugin.lightVisualKey(), PersistentDataType.BYTE);
+                    registry.unload(id, entity);
+                    if (wasBikePart) {
+                        Motorcycle loaded = motorcycles.get(id);
+                        if (loaded != null) unregister(loaded);
+                    }
                 } catch (IllegalArgumentException ignored) {
                 }
             }
@@ -1888,6 +1997,8 @@ public final class MotorcycleManager {
             loadedSeats.remove(bike.id());
         if (!bike.visual().isValid())
             loadedVisuals.remove(bike.id());
+        if (bike.lightVisual() != null && !bike.lightVisual().isValid())
+            loadedLightVisuals.remove(bike.id());
         playerToBike.values().removeIf(id -> id.equals(bike.id()));
         visualStates.remove(bike.id());
     }

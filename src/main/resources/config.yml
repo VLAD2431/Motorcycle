@@ -68,8 +68,12 @@ motorcycle:
     braking-kmh-per-second: 42.0
     # Скорость движения назад в км/ч.
     reverse-speed-kmh: 12.0
-    # Скорость поворота на максимальной скорости, градусов в секунду.
-    steering-degrees-per-second: 40.0
+    # Скорость поворота на малой скорости, градусов в секунду.
+    steering-max-degrees-per-second: 120.0
+    # Скорость поворота на высокой скорости, градусов в секунду.
+    steering-min-degrees-per-second: 35.0
+    steering-low-speed-kmh: 8.0
+    steering-high-speed-kmh: 80.0
     # Пассивное сопротивление движению в км/ч в секунду.
     rolling-resistance-kmh-per-second: 7.0
     # Минимальная скорость, ниже которой поворот почти не работает.
@@ -134,6 +138,17 @@ motorcycle:
     extra-radius: 0.10
 
   visual:
+    # Пусто — использовать модель BARRIER и её custom_model_data из ресурспака.
+    # Укажите ключ только для отдельной модели предмета (minecraft:item_model).
+    light-model: ""
+    # Данные для выбора варианта модели BARRIER через minecraft:custom_model_data (1.21.4+).
+    # Строки задаются в strings, числа — в floats, флаги — в flags, цвета — в colors.
+    light-custom-model-data:
+      strings: ["bike_light"]
+    # Переопределение яркости bike_light: значения от 0 до 15.
+    light-brightness:
+      block: 15
+      sky: 15
     # Вертикальное смещение модели относительно сиденья.
     height-offset: 0.0
     # Смещение модели вперёд по курсу.

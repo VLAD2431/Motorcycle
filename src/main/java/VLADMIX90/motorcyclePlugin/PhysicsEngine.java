@@ -25,6 +25,17 @@ public final class PhysicsEngine {
         return new Vector(-Math.sin(yaw), 0, Math.cos(yaw)).multiply(bike.speed());
     }
 
+    public double steeringDegreesPerTick(double speedBlocksPerTick) {
+        double max = plugin.getConfig().getDouble("motorcycle.physics.steering-max-degrees-per-second", 120.0);
+        double min = plugin.getConfig().getDouble("motorcycle.physics.steering-min-degrees-per-second", 35.0);
+        double lowSpeed = plugin.getConfig().getDouble("motorcycle.physics.steering-low-speed-kmh", 8.0);
+        double highSpeed = plugin.getConfig().getDouble("motorcycle.physics.steering-high-speed-kmh", 80.0);
+        double speedRange = Math.max(0.1, highSpeed - lowSpeed);
+        double factor = Math.max(0.0, Math.min(1.0,
+                (Math.abs(speedBlocksPerTick) * 72.0 - lowSpeed) / speedRange));
+        return (max + (min - max) * factor) / 20.0;
+    }
+
     public void handleJump(Motorcycle bike, boolean pressed) {
         if (pressed && !bike.jumpHeld() && !bike.jumping() && bike.battery() > 0) {
             double height = Math.max(0.1, plugin.getConfig().getDouble("motorcycle.physics.jump-height", 2.5));

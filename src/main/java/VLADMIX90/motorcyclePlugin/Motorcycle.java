@@ -9,6 +9,7 @@ public final class Motorcycle {
     private final UUID id;
     private final Pig seat;
     private final ItemDisplay visual;
+    private ItemDisplay lightVisual;
     private Pig passengerSeat;
 
     private double speed;
@@ -43,6 +44,8 @@ public final class Motorcycle {
     public UUID id() { return id; }
     public Pig seat() { return seat; }
     public ItemDisplay visual() { return visual; }
+    public ItemDisplay lightVisual() { return lightVisual; }
+    public void setLightVisual(ItemDisplay lightVisual) { this.lightVisual = lightVisual; }
     public Pig passengerSeat() { return passengerSeat; }
     public void setPassengerSeat(Pig passengerSeat) { this.passengerSeat = passengerSeat; }
     public double speed() { return speed; }

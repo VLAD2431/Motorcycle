@@ -14,6 +14,7 @@ public final class MotorcyclePlugin extends JavaPlugin {
     private NamespacedKey seatKey;
     private NamespacedKey interactionKey;
     private NamespacedKey visualKey;
+    private NamespacedKey lightVisualKey;
     private NamespacedKey headingKey;
     private NamespacedKey batteryFractionKey;
     private NamespacedKey chargeFractionKey;
@@ -40,6 +41,7 @@ public final class MotorcyclePlugin extends JavaPlugin {
         seatKey = new NamespacedKey(this, "motorcycle_seat");
         interactionKey = new NamespacedKey(this, "motorcycle_interaction");
         visualKey = new NamespacedKey(this, "motorcycle_visual");
+        lightVisualKey = new NamespacedKey(this, "motorcycle_light_visual");
         headingKey = new NamespacedKey(this, "heading_yaw");
         batteryFractionKey = new NamespacedKey(this, "battery_fraction");
         chargeFractionKey = new NamespacedKey(this, "charge_fraction");
@@ -114,6 +116,8 @@ public final class MotorcyclePlugin extends JavaPlugin {
     public NamespacedKey visualKey() {
         return visualKey;
     }
+
+    public NamespacedKey lightVisualKey() { return lightVisualKey; }
 
     public NamespacedKey headingKey() {
         return headingKey;

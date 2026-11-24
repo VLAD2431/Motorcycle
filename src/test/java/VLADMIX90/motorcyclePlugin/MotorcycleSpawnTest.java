@@ -22,11 +22,13 @@ class MotorcycleSpawnTest {
     private Pig seat;
     private ItemDisplay visual;
     private Location location;
+    private YamlConfiguration config;
 
     @BeforeEach
     void setUp() {
         MotorcyclePlugin plugin = mock(MotorcyclePlugin.class);
-        when(plugin.getConfig()).thenReturn(new YamlConfiguration());
+        config = new YamlConfiguration();
+        when(plugin.getConfig()).thenReturn(config);
         manager = new MotorcycleManager(plugin);
         world = mock(World.class);
         location = new Location(world, 100, 65, 100);
@@ -39,6 +41,19 @@ class MotorcycleSpawnTest {
                 .thenReturn(seat);
         when(world.spawn(any(Location.class), eq(ItemDisplay.class), org.mockito.ArgumentMatchers.<Consumer<ItemDisplay>>any()))
                 .thenReturn(visual);
+    }
+
+    @Test
+    void barrierCustomModelDataCreatesLightWithoutAnItemModelOverride() {
+        config.set("motorcycle.visual.light-model", "");
+        config.set("motorcycle.visual.light-custom-model-data.strings", java.util.List.of("bike_light"));
+        when(seat.isValid()).thenReturn(true);
+        when(visual.isValid()).thenReturn(true);
+
+        manager.spawn(location, 100);
+
+        verify(world, times(2)).spawn(any(Location.class), eq(ItemDisplay.class),
+                org.mockito.ArgumentMatchers.<Consumer<ItemDisplay>>any());
     }
 
     @Test

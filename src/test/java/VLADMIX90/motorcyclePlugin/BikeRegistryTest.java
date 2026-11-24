@@ -70,6 +70,21 @@ class BikeRegistryTest {
     }
 
     @Test
+    void unloadingLightDisplayUnregistersBikeButPreservesOtherDisplays() {
+        BikeRegistry registry = registryWithEntities();
+        UUID id = registry.bikes().keySet().iterator().next();
+        ItemDisplay light = entity(ItemDisplay.class);
+        registry.lightVisuals().put(id, light);
+        ItemDisplay visual = registry.visuals().get(id);
+
+        registry.unload(id, light);
+
+        assertFalse(registry.bikes().containsKey(id));
+        assertFalse(registry.lightVisuals().containsKey(id));
+        assertTrue(registry.visuals().get(id) == visual);
+    }
+
+    @Test
     void pruneInvalidRemovesOnlyInvalidLoadedEntities() {
         BikeRegistry registry = new BikeRegistry();
         UUID validId = UUID.randomUUID();
