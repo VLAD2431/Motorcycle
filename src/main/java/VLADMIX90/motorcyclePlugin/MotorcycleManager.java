@@ -708,12 +708,6 @@ public final class MotorcycleManager {
         }
         if (!motorcycle.seat().isValid() || !motorcycle.visual().isValid())
             return;
-        promotePassenger(motorcycle);
-        if (getRider(motorcycle) == null && motorcycle.passengerSeat() != null
-                && !motorcycle.passengerSeat().getPassengers().isEmpty()) {
-            send(player, "messages.mount-failed");
-            return;
-        }
         boolean playerAlreadyAboard = motorcycle.seat().getPassengers().stream()
                 .anyMatch(passenger -> passenger instanceof org.bukkit.entity.Player);
         if (playerAlreadyAboard) {
@@ -787,31 +781,7 @@ public final class MotorcycleManager {
                 return;
             if (player.getVehicle() != bike.seat() && player.getVehicle() != bike.passengerSeat())
                 playerToBike.remove(player.getUniqueId(), bike.id());
-            if (event.getDismounted() == bike.seat())
-                promotePassenger(bike);
         });
-    }
-
-    private void promotePassenger(Motorcycle bike) {
-        if (motorcycles.get(bike.id()) != bike || getRider(bike) != null)
-            return;
-        Pig seat = bike.passengerSeat();
-        if (seat == null || !seat.isValid())
-            return;
-        org.bukkit.entity.Player passenger = seat.getPassengers().stream()
-                .filter(org.bukkit.entity.Player.class::isInstance)
-                .map(org.bukkit.entity.Player.class::cast)
-                .filter(player -> player.isOnline() && !player.isDead())
-                .findFirst().orElse(null);
-        if (passenger == null)
-            return;
-        if (!passenger.leaveVehicle())
-            return;
-        if (bike.seat().addPassenger(passenger)) {
-            playerToBike.put(passenger.getUniqueId(), bike.id());
-        } else if (!seat.addPassenger(passenger)) {
-            playerToBike.remove(passenger.getUniqueId(), bike.id());
-        }
     }
 
     public void removeRider(org.bukkit.entity.Player player) {
@@ -820,11 +790,8 @@ public final class MotorcycleManager {
             playerToBike.remove(player.getUniqueId());
             return;
         }
-        boolean driver = player.getVehicle() == bike.seat();
         if (player.leaveVehicle()) {
             playerToBike.remove(player.getUniqueId(), bike.id());
-            if (driver)
-                promotePassenger(bike);
         }
     }
 
@@ -1089,15 +1056,12 @@ public final class MotorcycleManager {
                 }
             }
 
-            if (getRider(bike) == null)
-                promotePassenger(bike);
             org.bukkit.entity.Player rider = getRider(bike);
             if (rider != null && rider.isOnline() && !rider.isDead()) {
                 playerToBike.put(rider.getUniqueId(), bike.id());
                 drive(bike, rider);
             } else {
-                bike.setSpeed(PhysicsEngine.moveTowardZero(bike.speed(), physics.rollingPerTick()));
-                applyIdleHoverVelocity(bike);
+                driveWithoutRider(bike);
                 chargeIfNeeded(bike);
                 updateVisualLean(bike, false, false, false, 0);
             }
@@ -1195,6 +1159,30 @@ public final class MotorcycleManager {
         updateVisualLean(bike, left, right, forward, backward ? -1 : (forward ? 1 : 0));
         if (actionbarTick())
             sendActionBar(player, parseActionbar("motorcycle.actionbar.driving", bike, 0));
+    }
+
+    private void driveWithoutRider(Motorcycle bike) {
+        if (bike.storageInProgress()) {
+            bike.seat().setVelocity(new Vector());
+            return;
+        }
+
+        Location base = vehicleBaseLocation(bike);
+        if (plugin.zones().isNoRide(base)) {
+            bike.setSpeed(PhysicsEngine.moveTowardZero(bike.speed(), physics.brakingPerTick() * 1.6));
+            bike.setJumping(false);
+            bike.seat().setVelocity(new Vector(0, hoverCorrection(bike, base), 0));
+            bike.setJumpHeld(false);
+            return;
+        }
+
+        bike.setSpeed(PhysicsEngine.moveTowardZero(bike.speed(), physics.rollingPerTick()));
+        Vector horizontal = calculateHorizontalVelocity(bike);
+        Vector velocity = bike.jumping()
+                ? calculateJumpVelocity(bike, horizontal)
+                : resolveGroundMovement(bike, horizontal);
+        bike.seat().setVelocity(velocity);
+        bike.setJumpHeld(false);
     }
 
     private void dismount(org.bukkit.entity.Player player) {
@@ -1435,11 +1423,6 @@ public final class MotorcycleManager {
     }
 
     // ==================== Парение ====================
-
-    private void applyIdleHoverVelocity(Motorcycle bike) {
-        Location base = vehicleBaseLocation(bike);
-        bike.seat().setVelocity(new Vector(0, hoverCorrection(bike, base), 0));
-    }
 
     private Location snapBaseToHover(Location base) {
         double ground = groundYAt(base.getWorld(), base.getX(), base.getZ(), base.getY());
