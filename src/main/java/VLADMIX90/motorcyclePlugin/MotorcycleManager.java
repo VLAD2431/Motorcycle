@@ -1754,6 +1754,8 @@ public final class MotorcycleManager {
     }
 
     private void send(org.bukkit.entity.Player player, String path) {
+        if (!player.hasPermission("motorcycle.admin"))
+            return;
         player.sendMessage(plugin.miniMessage().deserialize(plugin.message(path)));
     }
 
